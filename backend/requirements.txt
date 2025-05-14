@@ -1,0 +1,12 @@
+# requirements.txt
+# Зависимости для FastAPI, работы с PostgreSQL (например, Neon.tech), JWT и асинхронности
+fastapi
+uvicorn
+sqlalchemy
+asyncpg
+pydantic
+python-dotenv
+httpx
+email-validator
+passlib[bcrypt]
+pyjwt 

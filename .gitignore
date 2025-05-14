@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtualenv
+backend/env/
+venv/
+ENV/
+
+# Alembic
+alembic/versions/
+
+# Test cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Node.js
+node_modules/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# dotenv
+.env
+.env.*
+
+# Misc
+*.sqlite3 
