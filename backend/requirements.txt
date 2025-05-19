@@ -9,4 +9,9 @@ python-dotenv
 httpx
 email-validator
 passlib[bcrypt]
-pyjwt 
+pyjwt
+
+# --- Для OCPP WebSocket сервера ---
+ocpp
+websockets
+redis

@@ -27,5 +27,6 @@ class Station(Base):
     installation_date = Column(String, nullable=True, default=kyrgyzstan_now)
     firmware_version = Column(String)
     status = Column(SqlEnum(StationStatus), default=StationStatus.active, nullable=False)
+    admin_id = Column(String, nullable=False)  # Владелец станции (admin/operator)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())

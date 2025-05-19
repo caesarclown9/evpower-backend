@@ -4,6 +4,7 @@ from app.db.models.maintenance import Maintenance, MaintenanceStatus
 from app.schemas.maintenance import MaintenanceCreate, MaintenanceUpdate
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
+from app.db.models.station import Station
 
 async def get_maintenance_by_id(db: AsyncSession, maintenance_id: str) -> Optional[Maintenance]:
     result = await db.execute(select(Maintenance).where(Maintenance.id == maintenance_id))
@@ -15,6 +16,18 @@ async def get_maintenances(db: AsyncSession, status: Optional[str] = None, stati
         query = query.where(Maintenance.status == status)
     if station_id:
         query = query.where(Maintenance.station_id == station_id)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+async def get_maintenances_by_admin_id(db: AsyncSession, admin_id: str, status: Optional[str] = None) -> List[Maintenance]:
+    # Получаем id всех станций admin
+    stations_result = await db.execute(select(Station.id).where(Station.admin_id == admin_id))
+    station_ids = [row[0] for row in stations_result.all()]
+    if not station_ids:
+        return []
+    query = select(Maintenance).where(Maintenance.station_id.in_(station_ids))
+    if status:
+        query = query.where(Maintenance.status == status)
     result = await db.execute(query)
     return result.scalars().all()
 

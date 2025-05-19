@@ -17,20 +17,23 @@ class StationBase(BaseModel):
     connector_types: List[str]
     firmware_version: Optional[str] = None
     installation_date: Optional[str] = None
+    status: Optional[str] = None
+    admin_id: str
 
 class StationCreate(StationBase):
     pass
 
 class StationUpdate(BaseModel):
-    serial_number: Optional[str]
-    model: Optional[str]
-    manufacturer: Optional[str]
-    location_id: Optional[str]
-    power_capacity: Optional[float]
-    connector_types: Optional[List[str]]
-    firmware_version: Optional[str]
+    serial_number: Optional[str] = None
+    model: Optional[str] = None
+    manufacturer: Optional[str] = None
+    location_id: Optional[str] = None
+    power_capacity: Optional[float] = None
+    connector_types: Optional[List[str]] = None
+    firmware_version: Optional[str] = None
     installation_date: Optional[str] = None
-    status: Optional[StationStatus]
+    status: Optional[str] = None
+    admin_id: Optional[str] = None
 
 class Station(StationBase):
     id: str

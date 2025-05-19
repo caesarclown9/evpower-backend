@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.openapi.utils import get_openapi
-from app.api import auth, clients, stations, locations
+from app.api import auth, clients, stations, locations, ocpp
 from fastapi.middleware.cors import CORSMiddleware
 
 # --- Импорт для автоматического создания полей ---
@@ -53,6 +53,7 @@ app.include_router(auth.router)
 app.include_router(clients.router)
 app.include_router(stations.router)
 app.include_router(locations.router)
+app.include_router(ocpp.router)
 
 # TODO: добавить остальные роутеры (locations, maintenance, reports, ocpp)
 

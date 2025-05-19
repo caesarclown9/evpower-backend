@@ -9,12 +9,14 @@ async def get_station_by_id(db: AsyncSession, station_id: str) -> Optional[Stati
     result = await db.execute(select(Station).where(Station.id == station_id))
     return result.scalar_one_or_none()
 
-async def get_stations(db: AsyncSession, status: Optional[str] = None, location_id: Optional[str] = None) -> List[Station]:
+async def get_stations(db: AsyncSession, status: Optional[str] = None, location_id: Optional[str] = None, admin_id: Optional[str] = None) -> List[Station]:
     query = select(Station)
     if status:
         query = query.where(Station.status == status)
     if location_id:
         query = query.where(Station.location_id == location_id)
+    if admin_id:
+        query = query.where(Station.admin_id == admin_id)
     result = await db.execute(query)
     return result.scalars().all()
 
