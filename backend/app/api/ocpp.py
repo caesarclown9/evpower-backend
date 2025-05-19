@@ -2,17 +2,22 @@ from fastapi import APIRouter, Depends, status, Body, HTTPException, Query
 from typing import List, Optional
 from app.schemas.ocpp import (
     OCPPConnection, OCPPConnectionCreate,
-    OCPPTransaction, OCPPTransactionCreate
+    OCPPTransaction, OCPPTransactionCreate,
+    Tariff, TariffCreate, ChargingSession, ChargingSessionCreate, LimitType, ChargingSessionStatus
 )
 from app.core.deps import get_current_user, require_role, get_db
 from pydantic import BaseModel, Field
 from app.schemas.user import UserCreateWithRole, UserOut
 from app.crud.users import create_user_with_role
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models.user import UserRole
+from app.db.models.user import UserRole, User
 from app.db.models.station import Station
 from sqlalchemy import select
 from ocpp_ws_server.redis_manager import redis_manager
+from app.crud.ocpp import (
+    create_tariff, get_tariff, list_tariffs, update_tariff, delete_tariff,
+    create_charging_session, get_charging_session, list_charging_sessions, update_charging_session, delete_charging_session
+)
 
 router = APIRouter(prefix="/ocpp", tags=["ocpp"])
 
@@ -103,3 +108,98 @@ async def disconnect_station(station_id: str = Body(..., example="DE-BERLIN-001"
     # Публикуем команду на отключение станции через Redis
     await redis_manager.publish_command(station_id, {"command": "Disconnect"})
     return {"status": "disconnect_sent", "station_id": station_id}
+
+# --- CRUD для тарифов ---
+@router.post("/tariffs", response_model=Tariff)
+async def create_tariff_api(tariff_in: TariffCreate, db: AsyncSession = Depends(get_db)):
+    return await create_tariff(db, tariff_in)
+
+@router.get("/tariffs", response_model=List[Tariff])
+async def list_tariffs_api(station_id: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    return await list_tariffs(db, station_id)
+
+@router.get("/tariffs/{tariff_id}", response_model=Tariff)
+async def get_tariff_api(tariff_id: str, db: AsyncSession = Depends(get_db)):
+    tariff = await get_tariff(db, tariff_id)
+    if not tariff:
+        raise HTTPException(404, "Tariff not found")
+    return tariff
+
+@router.delete("/tariffs/{tariff_id}")
+async def delete_tariff_api(tariff_id: str, db: AsyncSession = Depends(get_db)):
+    await delete_tariff(db, tariff_id)
+    return {"status": "deleted"}
+
+# --- CRUD для сессий зарядки ---
+@router.post("/sessions", response_model=ChargingSession)
+async def create_session_api(session_in: ChargingSessionCreate, db: AsyncSession = Depends(get_db)):
+    return await create_charging_session(db, session_in)
+
+@router.get("/sessions", response_model=List[ChargingSession])
+async def list_sessions_api(user_id: Optional[str] = None, station_id: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    return await list_charging_sessions(db, user_id, station_id)
+
+@router.get("/sessions/{session_id}", response_model=ChargingSession)
+async def get_session_api(session_id: str, db: AsyncSession = Depends(get_db)):
+    session = await get_charging_session(db, session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    return session
+
+@router.delete("/sessions/{session_id}")
+async def delete_session_api(session_id: str, db: AsyncSession = Depends(get_db)):
+    await delete_charging_session(db, session_id)
+    return {"status": "deleted"}
+
+# --- Запуск зарядки с лимитом и проверкой баланса ---
+class StartChargeRequest(BaseModel):
+    station_id: str
+    user_id: str
+    limit_type: LimitType = LimitType.none
+    limit_value: float | None = None
+
+@router.post("/start_charge", response_model=ChargingSession)
+async def start_charge(
+    req: StartChargeRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    # Получаем пользователя
+    user = await db.get(User, req.user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+    # Получаем тариф станции
+    tariffs = await list_tariffs(db, req.station_id)
+    if not tariffs:
+        raise HTTPException(400, "No tariff for this station")
+    tariff = tariffs[0]
+    # Проверяем лимит и баланс
+    if req.limit_type == LimitType.amount:
+        # Лимит по сумме: считаем сколько кВт можно купить
+        if user.balance < req.limit_value:
+            raise HTTPException(400, "Недостаточно средств на балансе")
+        energy_limit = req.limit_value / tariff.price_per_kwh
+    elif req.limit_type == LimitType.energy:
+        # Лимит по энергии: считаем сколько это будет стоить
+        amount = req.limit_value * tariff.price_per_kwh
+        if user.balance < amount:
+            raise HTTPException(400, "Недостаточно средств на балансе")
+        energy_limit = req.limit_value
+    else:
+        energy_limit = None
+    # Создаём сессию
+    session_in = ChargingSessionCreate(
+        user_id=req.user_id,
+        station_id=req.station_id,
+        limit_type=req.limit_type,
+        limit_value=req.limit_value
+    )
+    session = await create_charging_session(db, session_in)
+    # Отправляем команду на станцию через Redis
+    payload = {"session_id": session.id}
+    if energy_limit:
+        payload["energy_limit"] = energy_limit
+    await redis_manager.publish_command(req.station_id, {
+        "command": "RemoteStartTransaction",
+        "payload": payload
+    })
+    return session
