@@ -9,10 +9,22 @@ async def get_location_by_id(db: AsyncSession, location_id: str) -> Optional[Loc
     result = await db.execute(select(Location).where(Location.id == location_id))
     return result.scalar_one_or_none()
 
-async def get_locations(db: AsyncSession, status: Optional[str] = None) -> List[Location]:
+async def get_locations(
+    db: AsyncSession,
+    status: Optional[str] = None,
+    city: Optional[str] = None,
+    region: Optional[str] = None,
+    country: Optional[str] = None
+) -> List[Location]:
     query = select(Location)
     if status:
         query = query.where(Location.status == status)
+    if city:
+        query = query.where(Location.city == city)
+    if region:
+        query = query.where(Location.region == region)
+    if country:
+        query = query.where(Location.country == country)
     result = await db.execute(query)
     return result.scalars().all()
 
