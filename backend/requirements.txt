@@ -3,7 +3,6 @@
 fastapi
 uvicorn
 sqlalchemy
-asyncpg
 pydantic
 python-dotenv
 httpx
@@ -22,6 +21,3 @@ alembic
 
 # --- Для загрузки файлов через FastAPI ---
 python-multipart
-
-# --- Для асинхронной работы с Redis ---
-redis[asyncio]

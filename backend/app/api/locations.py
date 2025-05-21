@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.schemas.location import LocationCreate, LocationUpdate, Location
 from app.crud import locations as crud_locations
 from typing import List, Optional
+from app.core.deps import get_current_user
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/locations", tags=["locations"])
@@ -17,14 +18,14 @@ class LocationMapPoint(BaseModel):
     status: str
 
 @router.get("/public", response_model=List[LocationMapPoint], summary="Публичные локации для карты")
-async def public_locations(
+def public_locations(
     city: Optional[str] = Query(None),
     region: Optional[str] = Query(None),
     country: Optional[str] = Query(None),
     status: Optional[str] = Query("active"),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
-    locs = await crud_locations.get_locations(
+    locs = crud_locations.get_locations(
         db,
         status=status,
         city=city,
@@ -44,36 +45,34 @@ async def public_locations(
     ]
 
 @router.get("/", response_model=List[Location])
-async def list_locations(
+def list_locations(
     status: Optional[str] = Query(None),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
 ):
-    return await crud_locations.get_locations(db, status=status)
+    return crud_locations.get_locations(db, status=status)
 
-@router.post("/", response_model=Location, status_code=status.HTTP_201_CREATED)
-async def create_location(location_in: LocationCreate, db: AsyncSession = Depends(get_db)):
-    location = await crud_locations.create_location(db, location_in)
-    if not location:
-        raise HTTPException(status_code=400, detail="Ошибка создания локации")
-    return location
+@router.post("/", response_model=Location)
+def create_location(location_in: LocationCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    return crud_locations.create_location(db, location_in)
 
 @router.get("/{location_id}", response_model=Location)
-async def get_location(location_id: str, db: AsyncSession = Depends(get_db)):
-    location = await crud_locations.get_location_by_id(db, location_id)
+def get_location(location_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    location = crud_locations.get_location_by_id(db, location_id)
     if not location:
-        raise HTTPException(status_code=404, detail="Локация не найдена")
+        raise HTTPException(status_code=404, detail="Location not found")
     return location
 
 @router.put("/{location_id}", response_model=Location)
-async def update_location(location_id: str, location_in: LocationUpdate, db: AsyncSession = Depends(get_db)):
-    location = await crud_locations.update_location(db, location_id, location_in)
+def update_location(location_id: str, location_in: LocationUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    location = crud_locations.update_location(db, location_id, location_in)
     if not location:
-        raise HTTPException(status_code=404, detail="Локация не найдена или ошибка обновления")
+        raise HTTPException(status_code=404, detail="Location not found")
     return location
 
-@router.delete("/{location_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_location(location_id: str, db: AsyncSession = Depends(get_db)):
-    success = await crud_locations.delete_location(db, location_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Локация не найдена")
-    return
+@router.delete("/{location_id}")
+def delete_location(location_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    result = crud_locations.delete_location(db, location_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Location not found")
+    return {"status": "deleted"}

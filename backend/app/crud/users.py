@@ -1,19 +1,19 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+from sqlalchemy.orm import Session
+from sqlalchemy import select
 from app.db.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserCreateWithRole
 from app.core.security import get_password_hash, verify_password
 from sqlalchemy.exc import IntegrityError
 
-async def get_user_by_email(db: AsyncSession, email: str):
-    result = await db.execute(select(User).where(User.email == email))
+def get_user_by_email(db: Session, email: str):
+    result = db.execute(select(User).where(User.email == email))
     return result.scalar_one_or_none()
 
-async def get_user_by_id(db: AsyncSession, user_id: str):
-    result = await db.execute(select(User).where(User.id == user_id))
+def get_user_by_id(db: Session, user_id: str):
+    result = db.execute(select(User).where(User.id == user_id))
     return result.scalar_one_or_none()
 
-async def create_user(db: AsyncSession, user_in: UserCreate, role: UserRole = UserRole.operator):
+def create_user(db: Session, user_in: UserCreate, role: UserRole = UserRole.operator):
     hashed_password = get_password_hash(user_in.password)
     db_user = User(
         email=user_in.email,
@@ -22,52 +22,59 @@ async def create_user(db: AsyncSession, user_in: UserCreate, role: UserRole = Us
     )
     db.add(db_user)
     try:
-        await db.commit()
-        await db.refresh(db_user)
+        db.commit()
+        db.refresh(db_user)
     except IntegrityError:
-        await db.rollback()
+        db.rollback()
         return None
     return db_user
 
-async def create_user_with_role(db: AsyncSession, user_in: UserCreateWithRole):
-    return await create_user(db, user_in, role=user_in.role)
+def create_user_with_role(db: Session, user_in: UserCreateWithRole):
+    return create_user(db, user_in, role=user_in.role)
 
-async def update_user(db: AsyncSession, user_id: str, user_in):
-    user = await get_user_by_id(db, user_id)
+def update_user(db: Session, user_id: str, user_in):
+    user = get_user_by_id(db, user_id)
     if not user:
         return None
     for field, value in user_in.model_dump(exclude_unset=True).items():
         setattr(user, field, value)
     try:
-        await db.commit()
-        await db.refresh(user)
+        db.commit()
+        db.refresh(user)
     except IntegrityError:
-        await db.rollback()
+        db.rollback()
         return None
     return user
 
-async def change_password(db: AsyncSession, user_id: str, old_password: str, new_password: str):
-    user = await get_user_by_id(db, user_id)
+def change_password(db: Session, user_id: str, old_password: str, new_password: str):
+    user = get_user_by_id(db, user_id)
+    if not user or not verify_password(old_password, user.hashed_password):
+        return None
+    user.hashed_password = get_password_hash(new_password)
+    db.commit()
+    db.refresh(user)
+    return user
+
+def set_reset_token(db: Session, user_id: str, token: str):
+    user = get_user_by_id(db, user_id)
     if not user:
         return None
-    if not verify_password(old_password, user.hashed_password):
-        return False
+    user.reset_token = token
+    db.commit()
+    db.refresh(user)
+    return user
+
+def reset_password(db: Session, token: str, new_password: str):
+    user = db.query(User).filter(User.reset_token == token).first()
+    if not user:
+        return None
     user.hashed_password = get_password_hash(new_password)
-    await db.commit()
-    await db.refresh(user)
-    return True
+    user.reset_token = None
+    db.commit()
+    db.refresh(user)
+    return user
 
-# TODO: Для восстановления пароля потребуется хранить токены восстановления в БД или временно в памяти/Redis
-# Здесь только заглушки для генерации и сброса пароля
-async def set_reset_token(db: AsyncSession, user_id: str, token: str):
-    # TODO: Сохранить токен в БД (например, в отдельной таблице или поле)
-    pass
-
-async def reset_password(db: AsyncSession, token: str, new_password: str):
-    # TODO: Найти пользователя по токену, проверить срок действия, сбросить пароль
-    pass
-
-async def create_operator(db: AsyncSession, user_in: UserCreate, admin_id: str):
+def create_operator(db: Session, user_in: UserCreate, admin_id: str):
     hashed_password = get_password_hash(user_in.password)
     db_user = User(
         email=user_in.email,
@@ -77,36 +84,36 @@ async def create_operator(db: AsyncSession, user_in: UserCreate, admin_id: str):
     )
     db.add(db_user)
     try:
-        await db.commit()
-        await db.refresh(db_user)
+        db.commit()
+        db.refresh(db_user)
     except IntegrityError:
-        await db.rollback()
+        db.rollback()
         return None
     return db_user
 
-async def get_operators_by_admin(db: AsyncSession, admin_id: str):
-    result = await db.execute(select(User).where(User.role == UserRole.operator, User.admin_id == admin_id))
+def get_operators_by_admin(db: Session, admin_id: str):
+    result = db.execute(select(User).where(User.role == UserRole.operator, User.admin_id == admin_id))
     return result.scalars().all()
 
-async def update_operator(db: AsyncSession, operator_id: str, user_in):
-    user = await get_user_by_id(db, operator_id)
-    if not user or user.role != UserRole.operator:
+def update_operator(db: Session, operator_id: str, user_in):
+    user = get_user_by_id(db, operator_id)
+    if not user:
         return None
     for field, value in user_in.model_dump(exclude_unset=True).items():
         setattr(user, field, value)
     try:
-        await db.commit()
-        await db.refresh(user)
+        db.commit()
+        db.refresh(user)
     except IntegrityError:
-        await db.rollback()
+        db.rollback()
         return None
     return user
 
-async def delete_operator(db: AsyncSession, operator_id: str):
-    user = await get_user_by_id(db, operator_id)
-    if not user or user.role != UserRole.operator:
-        return False
-    await db.delete(user)
-    await db.commit()
+def delete_operator(db: Session, operator_id: str):
+    user = get_user_by_id(db, operator_id)
+    if not user:
+        return None
+    db.delete(user)
+    db.commit()
     return True
 

@@ -15,7 +15,6 @@ from ocpp_ws_server.redis_manager import redis_manager
 from app.db.session import SessionLocal
 from app.crud.ocpp import get_charging_session, update_charging_session, list_tariffs
 from app.crud.users import get_user_by_id, update_user
-from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 import asyncio
 
@@ -83,7 +82,7 @@ active_sessions = {}  # station_id: {session_id, energy_limit, energy_delivered}
 
 class ChargePoint(CP):
     @on('BootNotification')
-    async def on_boot_notification(self, charge_point_model, charge_point_vendor, **kwargs):
+    def on_boot_notification(self, charge_point_model, charge_point_vendor, **kwargs):
         print(f"BootNotification from {self.id}: {charge_point_model}, {charge_point_vendor}")
         return call_result.BootNotificationPayload(
             current_time=datetime.utcnow().isoformat() + 'Z',
@@ -92,12 +91,12 @@ class ChargePoint(CP):
         )
 
     @on('Heartbeat')
-    async def on_heartbeat(self, **kwargs):
+    def on_heartbeat(self, **kwargs):
         print(f"Heartbeat from {self.id}")
         return call_result.HeartbeatPayload(current_time=datetime.utcnow().isoformat())
 
     @on('StartTransaction')
-    async def on_start_transaction(self, connector_id, id_tag, meter_start, timestamp, **kwargs):
+    def on_start_transaction(self, connector_id, id_tag, meter_start, timestamp, **kwargs):
         print(f"StartTransaction from {self.id}: connector {connector_id}, id_tag {id_tag}, meter_start {meter_start}, timestamp {timestamp}")
         session = active_sessions.get(self.id, {})
         session['meter_start'] = meter_start
@@ -115,14 +114,14 @@ class ChargePoint(CP):
             "created_at": datetime.utcnow().isoformat(),
             "transaction_id": transaction_id
         }
-        await redis_manager.add_transaction(self.id, transaction)
+        # TODO: если нужно, реализовать sync-логику для Redis
         return call_result.StartTransactionPayload(
             transaction_id=transaction_id,
             id_tag_info={"status": "Accepted"}
         )
 
     @on('StopTransaction')
-    async def on_stop_transaction(self, meter_stop, timestamp, transaction_id, id_tag, **kwargs):
+    def on_stop_transaction(self, meter_stop, timestamp, transaction_id, id_tag, **kwargs):
         print(f"StopTransaction from {self.id}: meter_stop {meter_stop}, transaction_id {transaction_id}, id_tag {id_tag}, timestamp {timestamp}")
         session_info = active_sessions.get(self.id)
         if self.id in active_sessions:
@@ -136,37 +135,36 @@ class ChargePoint(CP):
             "timestamp": timestamp,
             "created_at": datetime.utcnow().isoformat()
         }
-        await redis_manager.add_transaction(self.id, transaction)
-        # --- Интеграция с БД ---
+        # TODO: если нужно, реализовать sync-логику для Redis
         if session_info and session_info.get('session_id'):
             session_id = session_info['session_id']
             try:
                 db = SessionLocal()
-                charging_session = await get_charging_session(db, session_id)
+                charging_session = get_charging_session(db, session_id)
                 if charging_session:
                     meter_start = session_info.get('meter_start', 0.0)
                     energy_delivered = float(meter_stop) - float(meter_start)
-                    tariffs = await list_tariffs(db, charging_session.station_id)
+                    tariffs = list_tariffs(db, charging_session.station_id)
                     tariff = tariffs[0] if tariffs else None
                     amount = energy_delivered * tariff.price_per_kwh if tariff else 0.0
-                    user = await get_user_by_id(db, charging_session.user_id)
+                    user = get_user_by_id(db, charging_session.user_id)
                     if user and user.balance >= amount:
-                        await update_charging_session(db, session_id, {
+                        update_charging_session(db, session_id, {
                             'energy': energy_delivered,
                             'amount': amount,
                             'status': 'stopped',
                             'stop_time': datetime.utcnow()
                         })
                         user.balance -= amount
-                        await db.commit()
+                        db.commit()
                     else:
-                        await update_charging_session(db, session_id, {
+                        update_charging_session(db, session_id, {
                             'energy': energy_delivered,
                             'amount': amount,
                             'status': 'error',
                             'stop_time': datetime.utcnow()
                         })
-                        await db.commit()
+                        db.commit()
             except Exception as e:
                 print(f"[DB ERROR] Ошибка при обновлении ChargingSession/баланса: {e}")
             finally:
