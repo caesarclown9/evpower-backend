@@ -15,3 +15,13 @@ pyjwt
 ocpp
 websockets
 redis
+psycopg2-binary
+
+# --- Для Alembic (миграции БД) ---
+alembic
+
+# --- Для загрузки файлов через FastAPI ---
+python-multipart
+
+# --- Для асинхронной работы с Redis ---
+redis[asyncio]
