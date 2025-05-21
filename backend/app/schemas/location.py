@@ -41,4 +41,11 @@ class Location(LocationBase):
     status: LocationStatus
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
+    
+    @property
+    def geo_point(self) -> Optional[str]:
+        if self.latitude is not None and self.longitude is not None:
+            return f"{self.latitude}, {self.longitude}"
+        return None
+    
     model_config = ConfigDict(from_attributes=True)

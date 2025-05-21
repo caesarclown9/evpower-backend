@@ -21,9 +21,14 @@ class Location(Base):
     country = Column(String)
     latitude = Column(Float)
     longitude = Column(Float, nullable=True)
-    geo_point = Column(String, nullable=True)
     client_id = Column(String)
     working_hours = Column(String)
     status = Column(SqlEnum(LocationStatus), default=LocationStatus.active, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+    @property
+    def geo_point(self) -> str:
+        if self.latitude is not None and self.longitude is not None:
+            return f"{self.latitude}, {self.longitude}"
+        return None

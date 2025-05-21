@@ -39,3 +39,24 @@ node_modules/
 
 # Misc
 *.sqlite3 
+
+# === Project-specific ===
+# Инструкции и документация (кроме README.md)
+docs/
+instructions/
+*.md
+!README.md
+
+# Локальный OCPP сервер и тестовые клиенты
+
+
+# Локальные скрипты, временные и тестовые файлы
+scripts/
+test_*
+*.bak
+*.tmp
+*.test
+
+# Не коммитить Postman коллекции, если они только для локального теста
+*.postman_collection.json 
+screenshots/

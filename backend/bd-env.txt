@@ -1,5 +1,5 @@
 .env:
-DATABASE_URL='postgresql+asyncpg://neondb_owner:npg_#######-a2juo46v-pooler.eu-central-1.aws.neon.tech/neondb?'
+DATABASE_URL='postgresql+psycopg2://neondb_owner:npg_#######-a2juo46v-pooler.eu-central-1.aws.neon.tech/neondb?'
 JWT_SECRET_KEY=#######3859eb9073c430e
 JWT_ALGORITHM=HS256
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60

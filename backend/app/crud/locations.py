@@ -29,7 +29,8 @@ async def get_locations(
     return result.scalars().all()
 
 async def create_location(db: AsyncSession, location_in: LocationCreate) -> Optional[Location]:
-    db_location = Location(**location_in.model_dump())
+    data = location_in.model_dump(exclude={"geo_point"})
+    db_location = Location(**data)
     db.add(db_location)
     try:
         await db.commit()
@@ -43,7 +44,7 @@ async def update_location(db: AsyncSession, location_id: str, location_in: Locat
     location = await get_location_by_id(db, location_id)
     if not location:
         return None
-    for field, value in location_in.model_dump(exclude_unset=True).items():
+    for field, value in location_in.model_dump(exclude_unset=True, exclude={"geo_point"}).items():
         setattr(location, field, value)
     try:
         await db.commit()

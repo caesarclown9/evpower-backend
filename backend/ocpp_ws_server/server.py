@@ -8,7 +8,7 @@ from ocpp_ws_server.redis_manager import redis_manager
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from app.db.session import AsyncSessionLocal
+from app.db.session import SessionLocal
 from app.crud.ocpp import get_charging_session, update_charging_session, list_tariffs
 from app.crud.users import get_user_by_id, update_user
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,37 +82,39 @@ class ChargePoint(CP):
         if session_info and session_info.get('session_id'):
             session_id = session_info['session_id']
             try:
-                async with AsyncSessionLocal() as db:
-                    charging_session = await get_charging_session(db, session_id)
-                    if charging_session:
-                        meter_start = session_info.get('meter_start', 0.0)
-                        energy_delivered = float(meter_stop) - float(meter_start)
-                        tariffs = await list_tariffs(db, charging_session.station_id)
-                        tariff = tariffs[0] if tariffs else None
-                        amount = energy_delivered * tariff.price_per_kwh if tariff else 0.0
-                        # Проверяем хватает ли средств
-                        user = await get_user_by_id(db, charging_session.user_id)
-                        if user and user.balance >= amount:
-                            # Обновляем сессию и списываем средства
-                            await update_charging_session(db, session_id, {
-                                'energy': energy_delivered,
-                                'amount': amount,
-                                'status': 'stopped',
-                                'stop_time': datetime.utcnow()
-                            })
-                            user.balance -= amount
-                            await db.commit()
-                        else:
-                            # Недостаточно средств: помечаем сессию как error, средства не списываем
-                            await update_charging_session(db, session_id, {
-                                'energy': energy_delivered,
-                                'amount': amount,
-                                'status': 'error',
-                                'stop_time': datetime.utcnow()
-                            })
-                            await db.commit()
+                db = SessionLocal()
+                charging_session = await get_charging_session(db, session_id)
+                if charging_session:
+                    meter_start = session_info.get('meter_start', 0.0)
+                    energy_delivered = float(meter_stop) - float(meter_start)
+                    tariffs = await list_tariffs(db, charging_session.station_id)
+                    tariff = tariffs[0] if tariffs else None
+                    amount = energy_delivered * tariff.price_per_kwh if tariff else 0.0
+                    # Проверяем хватает ли средств
+                    user = await get_user_by_id(db, charging_session.user_id)
+                    if user and user.balance >= amount:
+                        # Обновляем сессию и списываем средства
+                        await update_charging_session(db, session_id, {
+                            'energy': energy_delivered,
+                            'amount': amount,
+                            'status': 'stopped',
+                            'stop_time': datetime.utcnow()
+                        })
+                        user.balance -= amount
+                        await db.commit()
+                    else:
+                        # Недостаточно средств: помечаем сессию как error, средства не списываем
+                        await update_charging_session(db, session_id, {
+                            'energy': energy_delivered,
+                            'amount': amount,
+                            'status': 'error',
+                            'stop_time': datetime.utcnow()
+                        })
+                        await db.commit()
             except Exception as e:
                 print(f"[DB ERROR] Ошибка при обновлении ChargingSession/баланса: {e}")
+            finally:
+                db.close()
         return call_result.StopTransactionPayload(
             id_tag_info={"status": "Accepted"}
         )

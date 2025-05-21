@@ -12,7 +12,7 @@ from ocpp.v16 import ChargePoint as CP
 from ocpp.routing import on
 from ocpp.v16 import call_result
 from ocpp_ws_server.redis_manager import redis_manager
-from app.db.session import AsyncSessionLocal
+from app.db.session import SessionLocal
 from app.crud.ocpp import get_charging_session, update_charging_session, list_tariffs
 from app.crud.users import get_user_by_id, update_user
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -74,9 +74,9 @@ app.include_router(ocpp.router)
 
 # --- Автоматическое создание полей в таблицах ---
 @app.on_event("startup")
-async def on_startup():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+def on_startup():
+    with engine.begin() as conn:
+        Base.metadata.create_all(bind=conn)
 
 # --- Хранилище активных сессий и лимитов (in-memory, можно заменить на Redis) ---
 active_sessions = {}  # station_id: {session_id, energy_limit, energy_delivered}
@@ -141,34 +141,36 @@ class ChargePoint(CP):
         if session_info and session_info.get('session_id'):
             session_id = session_info['session_id']
             try:
-                async with AsyncSessionLocal() as db:
-                    charging_session = await get_charging_session(db, session_id)
-                    if charging_session:
-                        meter_start = session_info.get('meter_start', 0.0)
-                        energy_delivered = float(meter_stop) - float(meter_start)
-                        tariffs = await list_tariffs(db, charging_session.station_id)
-                        tariff = tariffs[0] if tariffs else None
-                        amount = energy_delivered * tariff.price_per_kwh if tariff else 0.0
-                        user = await get_user_by_id(db, charging_session.user_id)
-                        if user and user.balance >= amount:
-                            await update_charging_session(db, session_id, {
-                                'energy': energy_delivered,
-                                'amount': amount,
-                                'status': 'stopped',
-                                'stop_time': datetime.utcnow()
-                            })
-                            user.balance -= amount
-                            await db.commit()
-                        else:
-                            await update_charging_session(db, session_id, {
-                                'energy': energy_delivered,
-                                'amount': amount,
-                                'status': 'error',
-                                'stop_time': datetime.utcnow()
-                            })
-                            await db.commit()
+                db = SessionLocal()
+                charging_session = await get_charging_session(db, session_id)
+                if charging_session:
+                    meter_start = session_info.get('meter_start', 0.0)
+                    energy_delivered = float(meter_stop) - float(meter_start)
+                    tariffs = await list_tariffs(db, charging_session.station_id)
+                    tariff = tariffs[0] if tariffs else None
+                    amount = energy_delivered * tariff.price_per_kwh if tariff else 0.0
+                    user = await get_user_by_id(db, charging_session.user_id)
+                    if user and user.balance >= amount:
+                        await update_charging_session(db, session_id, {
+                            'energy': energy_delivered,
+                            'amount': amount,
+                            'status': 'stopped',
+                            'stop_time': datetime.utcnow()
+                        })
+                        user.balance -= amount
+                        await db.commit()
+                    else:
+                        await update_charging_session(db, session_id, {
+                            'energy': energy_delivered,
+                            'amount': amount,
+                            'status': 'error',
+                            'stop_time': datetime.utcnow()
+                        })
+                        await db.commit()
             except Exception as e:
                 print(f"[DB ERROR] Ошибка при обновлении ChargingSession/баланса: {e}")
+            finally:
+                db.close()
         return call_result.StopTransactionPayload(
             id_tag_info={"status": "Accepted"}
         )
